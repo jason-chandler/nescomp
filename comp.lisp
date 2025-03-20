@@ -20,10 +20,10 @@
 ;; Leaves result in accumulator (a)
 (defun comp (x &optional env)
   (cond
-    ((null x) (type-code :boolean '((lda (imm 0)))))
-    ((eq x t) (type-code :boolean '((lda (imm 1)))))
+    ((null x) (type-code :boolean `((lda ,(imm 0)))))
+    ((eq x t) (type-code :boolean `((lda ,(imm 1)))))
     ((symbolp x) (comp-symbol x env))
-    ((atom x) (type-code :integer (list (list 'lda (list 'imm x)))))
+    ((atom x) (type-code :integer (list (list 'lda (imm x)))))
     (t (let ((fn (first x)) (args (rest x)))
          (case fn
            (defun (setq *label-num* 0)
@@ -51,8 +51,8 @@
 
 ;; Allocate registers for 6502
 ;; 6502 has very limited registers, so we use zero page memory locations instead
-(defvar *params* '(zp-param0 zp-param1 zp-param2 zp-param3))
-(defvar *locals* '(zp-local0 zp-local1 zp-local2 zp-local3))
+(defvar *params* '(zp_param0 zp_param1 zp_param2 zp_param3))
+(defvar *locals* '(zp_local0 zp_local1 zp_local2 zp_local3))
 
 ;; Generate a label
 (defvar *label-num* 0)
@@ -111,14 +111,16 @@
                 (list end-label)))))
 
 (defun comp-funcall (f args env)
+  ;; These are opposite because we're constructing the labels in the opposite order. I'm sorry.
   (let ((comparisons (assoc f '((> . blt) (>= . bcc) (= . bne) 
                                 (<= . bcs) (< . bge) (/= . beq))))
         (logical (assoc f '((and . and) (or . ora))))
         (arith1 (assoc f '((1+ . inc) (1- . dec))))
-        (arith+- (assoc f '((+ . add-6502) (- . sub-6502)))))
+        (arith+- (assoc f '((+ . add6502) (- . sub6502)))))
     (cond
       (comparisons
-       (let ((label (gen-label)))
+       (let ((label (gen-label))
+             (end-label (gen-label)))
          (type-code :boolean
                     (append
                      (comp-args f args 2 :integer env)
@@ -127,8 +129,8 @@
                      (list '(pla) '(sta temp1) ; Second arg
                            '(pla) '(cmp temp1) ; First arg compared with second
                            (list (cdr comparisons) label) 
-                           '(lda (imm 1)) (list 'jmp (gen-label))
-                           label '(lda (imm 0)) (gen-label))))))
+                           '(lda (imm 1)) (list 'jmp end-label)
+                           label '(lda (imm 0)) end-label)))))
       (logical 
        (type-code :boolean
                   (append
@@ -183,7 +185,7 @@
 ;; 6502-specific utility functions that will be included in the runtime
 
 (defun output-runtime-functions ()
-  '(
+  `(
     ;; Save context (return address and registers)
     save_context
     (pla) (sta return_addr)
@@ -197,19 +199,19 @@
     (rts)
     
     ;; Addition function for 6502
-    add-6502
+    add6502
     (clc)
     (adc temp1)
     (rts)
     
     ;; Subtraction function for 6502
-    sub-6502
+    sub6502
     (sec)
     (sbc temp1)
     (rts)
     
     ;; Multiplication (8-bit)
-    mul-6502
+    mul6502
     (sta multiplicand)
     (sty multiplier)
     (lda (imm 0))
@@ -228,9 +230,9 @@
     
     ;; Initialize heap and allocate cons cells
     init_heap
-    (lda (lo heap_start))  ; Low byte of heap_start address
+    (lda ,(lo 'heap_start))  ; Low byte of heap_start address
     (sta heap_ptr)
-    (lda (hi heap_start))  ; High byte of heap_start address
+    (lda ,(hi 'heap_start))  ; High byte of heap_start address
     (sta heap_ptr+1)
     (lda (imm 0))
     (sta heap_used)
@@ -285,42 +287,42 @@
     (rts)
     
     ;; Define the zero page memory used by the runtime
-    (org zeropage)
-    temp1 (ds 1)           ; Temporary storage
-    temp2 (ds 1)
-    ptr (ds 2)             ; General purpose pointer
-    return_addr (ds 2)     ; Return address for functions
+    (.segment "ZEROPAGE")
+    temp1 (.res 1)           ; Temporary storage
+    temp2 (.res 1)
+    ptr (.res 2)             ; General purpose pointer
+    return_addr (.res 2)     ; Return address for functions
     
     ;; Arithmetic
-    multiplicand (ds 1)
-    multiplier (ds 1)
-    product (ds 1)
+    multiplicand (.res 1)
+    multiplier (.res 1)
+    product (.res 1)
     
     ;; Memory allocation
-    heap_ptr (ds 2)        ; Current heap position
-    heap_used (ds 1)       ; Number of used cells
-    alloc_size (ds 1)      ; Size for allocation
-    alloc_result (ds 2)    ; Result pointer from alloc
+    heap_ptr (.res 2)        ; Current heap position
+    heap_used (.res 1)       ; Number of used cells
+    alloc_size (.res 1)      ; Size for allocation
+    alloc_result (.res 2)    ; Result pointer from alloc
     
     ;; Cons cells
-    cons_car (ds 1)
-    cons_cdr (ds 2)
-    cons_ptr (ds 2)
+    cons_car (.res 1)
+    cons_cdr (.res 2)
+    cons_ptr (.res 2)
     
     ;; Function parameters (in zero page for speed)
-    zp-param0 (ds 1)
-    zp-param1 (ds 1)
-    zp-param2 (ds 1)
-    zp-param3 (ds 1)
+    zp_param0 (.res 1)
+    zp_param1 (.res 1)
+    zp_param2 (.res 1)
+    zp_param3 (.res 1)
     
     ;; Local variables (in zero page)
-    zp-local0 (ds 1)
-    zp-local1 (ds 1)
-    zp-local2 (ds 1)
-    zp-local3 (ds 1)
+    zp_local0 (.res 1)
+    zp_local1 (.res 1)
+    zp_local2 (.res 1)
+    zp_local3 (.res 1)
     
     ;; Heap starts after zero page
-    (org ram)
+    (.segment "RAM")
     heap_start
     ))
 
@@ -380,32 +382,41 @@
               1
               (* n (factorial (1- n)))))))
 
+(pprint (comp '(defun factorial (n)
+                (if (= n 0)
+                    1
+                    (* n (factorial (1- n)))))))
 (pprint (example-factorial))
 
 ;; Sample NES program with Lisp functions
 (defun example-nes-program ()
   (append
-   '(;; NES Header
+   `(;; NES Header
      (.segment "HEADER")
-     (.byte "NES" $1a)   ; NES header identifier
-     (.byte 2)            ; 2x 16KB PRG ROM
-     (.byte 1)            ; 1x 8KB CHR ROM
-     (.byte $01 $00)     ; Mapper 0, vertical mirroring
+     (.byte "\"EXAMPLE\"")   ; NES header identifier
+     romspec
+     (.byte $30)
+     (.byte 0)
+     (.byte $07)
+     (.byte 0 0 0 0)
+     (.word $AAAA $5555)
      
      ;; Vectors (required for NES)
      (.segment "VECTORS")
      (.word nmi)
      (.word reset)
-     (.word irq
+     (.word irq)
             
-      ;; Zero page variables           
-      (.segment "ZEROPAGE")
-      )
+     ;; Zero page variables           
+     (.segment "ZEROPAGE")
+     score (.res 1)
+     
+      
      
      ;; Include the zero page definitions
-     (output-runtime-functions)
+     ,@(output-runtime-functions)
      
-     '(;; Main program
+     ;; Main program
        (.segment "CODE")
        
        reset
@@ -426,10 +437,10 @@
        (jmp reset)
        
        ;; Main Lisp functions compiled to 6502)
-       ))
+       )
     
    ;; Include compiled Lisp functions
-   (example-factorial)
+    `(,(example-factorial))
    
    '(;; Game main loop (mostly assembly, calling Lisp functions)
      main_loop
@@ -437,7 +448,7 @@
      
      ;; Call our Lisp function as part of game logic
      (lda (imm 5))         ; Calculate factorial of 5
-     (sta zp-param0)
+     (sta zp_param0)
      (jsr factorial)       ; Result in accumulator
      
      ;; Store result for display
@@ -453,7 +464,7 @@
      ;; Clear memory from $0000-$07FF
      (lda (imm 0))
      (ldx (imm 0))
-     (clear_loop)
+     clear_loop
      (sta (abs-x $0000))
      (sta (abs-x $0100))
      (sta (abs-x $0200))
@@ -476,7 +487,7 @@
      
      wait_vblank
      (bit (abs- $2002))
-     (wait_vblank_loop)
+     wait_vblank_loop
      (bit (abs- $2002))
      (bpl wait_vblank_loop)
      (rts)

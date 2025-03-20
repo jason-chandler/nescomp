@@ -31,9 +31,13 @@
     ((and (listp statement) (eq (first statement) 'defcode))
      (format stream ";;; Function: ~a~%" (second statement))
      (format stream ";;; Parameters: ~a~%" (third statement))
-     (loop :for nested-statement :in (cddddr statement)
+     (loop :for nested-statement :in (cdddr statement)
            :do (progn (format-statement nested-statement stream)
                       (format stream "~%"))))
+
+    ;; Special case for segments
+    ((and (listp statement) (eq (first statement) '.segment))
+     (format stream "~a \"~a\"" (string-downcase (symbol-name (first statement))) (second statement)))
     
     ;; Normal instruction
     ((listp statement)
@@ -98,7 +102,7 @@
      (format nil "(~a),y" (format-value (second operand))))
     
     ;; Absolute address: (abs address) or just the address
-    ((or (and (listp operand) (eq (first operand) 'abs))
+    ((or (and (listp operand) (eq (first operand) 'abs-))
          (numberp operand)
          (symbolp operand))
      (let ((address (if (listp operand) (second operand) operand)))
@@ -141,7 +145,7 @@
 
 
 ;;(format-assembly (comp '(test)))
-(example-output)
+
 ;; Example usage:
 (defun example-output ()
   (let ((test-code 
@@ -150,18 +154,18 @@
               factorial
               (jsr save_context)
               (lda (imm 0))
-              (cmp zp-param0)
+              (cmp zp_param0)
               (bne not_zero)
               (lda (imm 1))
               (jmp done)
               not_zero
-              (lda zp-param0)
+              (lda zp_param0)
               (pha)
-              (dec zp-param0)
+              (dec zp_param0)
               (jsr factorial)
               (sta temp1)
               (pla)
-              (jsr mul-6502)
+              (jsr mul6502)
               done
               (jsr restore_context)
               (rts))
@@ -179,17 +183,19 @@
     (format-assembly code stream)))
 
 ;; Function to combine the Lisp compiler with the formatter
-(defun compile-lisp-to-6502-file (lisp-expr filename &optional (include-runtime-p t))
+(defun compile-lisp-to-6502-file (lisp-expr filename &optional (prelude nil))
   "Compile Lisp expression to 6502 and write it to a file"
-  (let ((compiled-code (comp lisp-expr)))
-    (if include-runtime-p 
-        (let ((runtime (output-runtime-functions)))
-          (write-assembly-to-file (append runtime (cdr compiled-code)) filename)
-          (pprint (append runtime (cadr compiled-code))))
-        (write-assembly-to-file (cdr compiled-code) filename))))
+  (let ((compiled-code (cdr (comp lisp-expr))))
+    (if prelude
+        (write-assembly-to-file (append prelude compiled-code) filename)
+        (write-assembly-to-file compiled-code filename))))
 
 
 ;; (pprint (append (output-runtime-functions) (cadr (comp '(factorial)))))
-(compile-lisp-to-6502-file '(factorial) "test.s")
+(compile-lisp-to-6502-file nil "test.s" (example-nes-program))
 
 (pprint (format-assembly (output-runtime-functions)))
+(pprint (format-assembly (example-nes-program)))
+(format-assembly `(,(example-factorial)))
+
+(pprint (example-nes-program))

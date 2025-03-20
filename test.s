@@ -2,6 +2,21 @@
 
 .segment "CODE"
 
+.segment "HEADER"
+    .byte "EXAMPLE"
+ROMSPEC:
+    .byte $30
+    .byte 0
+    .byte $07
+    .byte 0, 0, 0, 0
+    .word $AAAA, $5555
+.segment "VECTORS"
+    .word NMI
+    .word RESET
+    .word IRQ
+.segment "ZEROPAGE"
+SCORE:
+    .res 1
 SAVE_CONTEXT:
     pla 
     sta RETURN_ADDR
@@ -14,15 +29,15 @@ RESTORE_CONTEXT:
     lda RETURN_ADDR
     pha 
     rts 
-ADD-6502:
+ADD6502:
     clc 
     adc TEMP1
     rts 
-SUB-6502:
+SUB6502:
     sec 
     sbc TEMP1
     rts 
-MUL-6502:
+MUL6502:
     sta MULTIPLICAND
     sty MULTIPLIER
     lda #0
@@ -39,9 +54,9 @@ MUL_SKIP:
     bne MUL_LOOP
     rts 
 INIT_HEAP:
-    lda LO, HEAP_START
+    lda #<HEAP_START
     sta HEAP_PTR
-    lda HI, HEAP_START
+    lda #>HEAP_START
     sta HEAP_PTR+1
     lda #0
     sta HEAP_USED
@@ -85,51 +100,145 @@ CONS:
     lda CONS_PTR
     ldx CONS_PTR+1
     rts 
-    org ZEROPAGE
+.segment "ZEROPAGE"
 TEMP1:
-    ds 1
+    .res 1
 TEMP2:
-    ds 1
+    .res 1
 PTR:
-    ds %00000010
+    .res %00000010
 RETURN_ADDR:
-    ds %00000010
+    .res %00000010
 MULTIPLICAND:
-    ds 1
+    .res 1
 MULTIPLIER:
-    ds 1
+    .res 1
 PRODUCT:
-    ds 1
+    .res 1
 HEAP_PTR:
-    ds %00000010
+    .res %00000010
 HEAP_USED:
-    ds 1
+    .res 1
 ALLOC_SIZE:
-    ds 1
+    .res 1
 ALLOC_RESULT:
-    ds %00000010
+    .res %00000010
 CONS_CAR:
-    ds 1
+    .res 1
 CONS_CDR:
-    ds %00000010
+    .res %00000010
 CONS_PTR:
-    ds %00000010
-ZP-PARAM0:
-    ds 1
-ZP-PARAM1:
-    ds 1
-ZP-PARAM2:
-    ds 1
-ZP-PARAM3:
-    ds 1
-ZP-LOCAL0:
-    ds 1
-ZP-LOCAL1:
-    ds 1
-ZP-LOCAL2:
-    ds 1
-ZP-LOCAL3:
-    ds 1
-    org RAM
+    .res %00000010
+ZP_PARAM0:
+    .res 1
+ZP_PARAM1:
+    .res 1
+ZP_PARAM2:
+    .res 1
+ZP_PARAM3:
+    .res 1
+ZP_LOCAL0:
+    .res 1
+ZP_LOCAL1:
+    .res 1
+ZP_LOCAL2:
+    .res 1
+ZP_LOCAL3:
+    .res 1
+.segment "RAM"
 HEAP_START:
+.segment "CODE"
+RESET:
+    sei 
+    cld 
+    ldx #$FF
+    txs 
+    jsr INIT_HEAP
+    jsr CLEAR_RAM
+    jsr INIT_PPU
+    jsr MAIN_LOOP
+    jmp RESET
+;;; Function: FACTORIAL
+;;; Parameters: (N)
+FACTORIAL:
+    jsr SAVE_CONTEXT
+    lda ZP_PARAM0
+    sta ZP_LOCAL0
+    lda ZP_LOCAL0
+    pha 
+    lda #0
+    pla 
+    sta TEMP1
+    pla 
+    cmp TEMP1
+    bne LABEL3
+    lda #1
+    jmp LABEL4
+LABEL3:
+    lda #0
+LABEL4:
+    cmp #0
+    beq LABEL1
+    lda #1
+    jmp LABEL2
+LABEL1:
+    lda ZP_LOCAL0
+    pha 
+    lda ZP_LOCAL0
+    sta TEMP1
+    dec TEMP1
+    lda TEMP1
+    pla 
+    sta ZP_PARAM0
     jsr FACTORIAL
+    pla 
+    sta ZP_PARAM1
+    pla 
+    sta ZP_PARAM0
+    jsr *
+LABEL2:
+    jsr RESTORE_CONTEXT
+    rts 
+
+MAIN_LOOP:
+    jsr WAIT_VBLANK
+    lda #%00000101
+    sta ZP_PARAM0
+    jsr FACTORIAL
+    sta SCORE
+    jsr UPDATE_SPRITES
+    jmp MAIN_LOOP
+CLEAR_RAM:
+    lda #0
+    ldx #0
+CLEAR_LOOP:
+    sta $0000,X
+    sta $0100,X
+    sta $0200,X
+    sta $0300,X
+    sta $0400,X
+    sta $0500,X
+    sta $0600,X
+    sta $0700,X
+    inx 
+    bne CLEAR_LOOP
+    rts 
+INIT_PPU:
+    lda #%10000000
+    sta $2000
+    lda #%00011110
+    sta $2001
+    rts 
+WAIT_VBLANK:
+    bit $2002
+WAIT_VBLANK_LOOP:
+    bit $2002
+    bpl WAIT_VBLANK_LOOP
+    rts 
+UPDATE_SPRITES:
+    rts 
+NMI:
+    rti 
+IRQ:
+    rti 
+    lda #0
